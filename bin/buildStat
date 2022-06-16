@@ -1,0 +1,19 @@
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <out>"
+    exit 1
+fi
+out="$1"
+
+if [[ $BASH_SOURCE = */* ]]; then
+    SpackCFBASE=${BASH_SOURCE%/*}/..
+else
+    SpackCFBASE='..'
+fi
+cd $SpackCFBASE
+
+source bin/env.sh
+
+spack env activate $out
+python3 bin/parse_err.py builds/$out/config/pkg-list.yaml builds/$out

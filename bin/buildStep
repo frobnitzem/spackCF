@@ -1,0 +1,25 @@
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <out>"
+    exit 1
+fi
+out="$1"
+
+if [[ $BASH_SOURCE = */* ]]; then
+    SpackCFBASE=${BASH_SOURCE%/*}/..
+else
+    SpackCFBASE='..'
+fi
+cd $SpackCFBASE
+
+source bin/env.sh
+
+if grep -q errors builds/$out/concretize.log; then
+    echo "Errors in builds/$out/concretize.log"
+    exit 1
+fi
+
+log=$(mktemp builds/$out/install.XXXX.log)
+spack env activate $out
+spack install -j16 >>$log 2>&1

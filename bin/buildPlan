@@ -1,0 +1,43 @@
+#!/bin/bash
+
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <config> <out>"
+    exit 1
+fi
+config="$1"
+out="$2"
+
+if [[ $BASH_SOURCE = */* ]]; then
+    SpackCFBASE=${BASH_SOURCE%/*}/..
+else
+    SpackCFBASE='..'
+fi
+cd $SpackCFBASE
+
+source bin/env.sh
+
+#spack clean -f -m -s -p
+
+if [ ! -s environments/$config/spack.yaml ]; then
+    echo "No environments/$config/spack.yaml file."
+    exit 1
+fi
+if [ ! -s environments/$config/pkg-list.yaml ]; then
+    echo "No environments/$config/pkg-list.yaml file."
+    exit 1
+fi
+if [ ! -d builds/$out ]; then
+    mkdir -p builds/$out/config
+    echo $config >builds/$out/envname.txt
+    cp -r environments/$config/* builds/$out/config/
+    spack env rm -y $out || :
+    spack env create $out builds/$out/config/spack.yaml
+    spack -e $out mirror add mymirror $MIRROR
+    if [ -d builds/$out/config/repo ]; then
+        spack -e $out repo add $SpackCFBASE/builds/$out/config/repo
+    fi
+fi
+spack env activate $out
+nice spack concretize >builds/$out/concretize.log 2>&1
+spack env depfile >builds/$out/Makefile
+make -f builds/$out/Makefile fetch-all
