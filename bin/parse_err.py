@@ -5,6 +5,8 @@
 import re
 import yaml
 from pathlib import Path
+from typing import List
+from subprocess import check_output, CalledProcessError
 
 from parse_concretize import append_errs
 from text import Text
@@ -64,7 +66,6 @@ def parse_stat():
     from spack.spec import Spec
     # parse the output of spack find -x into
     # gcc and cce lists
-    from subprocess import check_output
     stat = check_output(["spack", "find", "-xv"], encoding='utf-8')
 
     builds = {'cce':set(), 'gcc':set(), 'cla':set()}
@@ -88,15 +89,23 @@ def parse_stat():
     del builds['cla']
     return builds
 
-def did_build(pkg : str, compiler : str):
-    from subprocess import run
-    # use the return value from a call to
-    #   spack find -p netcdf-c%gcc ...
-    # to intuit the status of a package
-    pkg_with_compiler = pkg.split()
-    pkg_with_compiler.insert(1, f'%{compiler}')
-    ans = run(["spack", "find", "-p"] + pkg_with_compiler)#, capture_output=True)
-    return ans.returncode == 0 # True => built successfully
+def parse_matrix(lines, rows, cols):
+    decode = {'0': False, '1': True}
+    M = []
+    for line in lines:
+        tok = line.split()
+        if len(tok) != cols:
+            continue
+        M.append([decode[t] for t in tok])
+    assert len(M) == rows, "Invalid output!"
+    return M
+
+def did_build(pkgs : List[str], compilers : List[str]):
+    # Return a matrix of pkg x compilers 0-s and 1-s relating to
+    # 1 = installed, 0 = not installed
+    args = ['bin/pkg_status.py']+pkgs+[':']+compilers
+    ans = check_output(args, encoding='utf-8')
+    return parse_matrix(ans.split('\n'), len(pkgs), len(compilers))
 
 def lookup_status(pkg_list : str, out : Path) -> None:
     # builds = parse_stat() # too cumbersome to match specs this way
@@ -104,7 +113,10 @@ def lookup_status(pkg_list : str, out : Path) -> None:
     # and link to errors/ txt file for explanation!
     pkgs = yaml.safe_load(open(pkg_list))
 
-    cols = ["spec", "gcc", "cray", "amd"]
+    compilers = ["Cray", "CrayCC", "GCC", "AMD"]
+    compiler_specs = ['%cce@13.0.2', '%cce@13.0.2-lite', '%gcc', '%rocmcc']
+    assert len(compilers) == len(compiler_specs)
+    cols = ["spec"] + compilers
     # write a markdown-table header
     def write_hdr(f):
         f.write("| " + " | ".join(cols) + " |\n")
@@ -119,11 +131,10 @@ def lookup_status(pkg_list : str, out : Path) -> None:
         for name,group in pkgs.items():
             f.write(f"\n## {name}\n")
             write_hdr(f)
-            for spec in group:
-                vals = [spec, stat[did_build(spec,'gcc')],
-                              stat[did_build(spec,'cce')],
-                              stat[did_build(spec,'rocmcc')],
-                       ]
+            status = did_build(group, compiler_specs)
+            # status is a listy-matrix (group x compiler_specs)
+            for spec, pkg in zip(group, status):
+                vals = [spec] + [stat[j] for j in pkg]
                 f.write("| " + " | ".join(vals) + " |\n")
 
         #f.write("\nKey:\n")

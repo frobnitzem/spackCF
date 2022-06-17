@@ -22,4 +22,8 @@ fi
 
 log=$(mktemp builds/$out/install.XXXX.log)
 spack env activate $out
-spack install -j16 >>$log 2>&1
+if [ -z $SLURM_JOB_NUM_NODES ]; then
+  nice spack install -j16 >>$log 2>&1
+else
+  spack install -j16 >>$log 2>&1
+fi
